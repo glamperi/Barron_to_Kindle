@@ -1,15 +1,10 @@
 # Barron's to Kindle
 
-A GitHub Action that fetches the latest Barron's articles and sends them to your Kindle.
+A GitHub Action that fetches the latest Barron's Magazine using your subscription and sends it to your Kindle.
 
 ## What It Fetches
 
-This uses a **custom Calibre recipe** that fetches:
-- **Weekly Magazine** — The full print edition articles
-- **Real-Time News** — Latest breaking financial news
-- **Markets & Stocks** — Current market coverage
-
-The recipe bypasses the paywall using the same technique as the built-in Calibre recipe (Googlebot user agent + archive.is fallback), so no subscription credentials are needed.
+Uses Calibre's built-in **Barron's Magazine** recipe to fetch the weekly print edition with your subscription credentials.
 
 ## Setup
 
@@ -21,11 +16,11 @@ Go to your repository's **Settings → Secrets and variables → Actions** and a
 
 | Secret | Description |
 |--------|-------------|
+| `BARRONS_USERNAME` | Your Barron's login email |
+| `BARRONS_PASSWORD` | Your Barron's password |
 | `GMAIL_USERNAME` | Your Gmail address |
 | `GMAIL_APP_PASSWORD` | Your Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
 | `KINDLE_EMAIL` | Your Kindle email (e.g., `yourname@kindle.com`) |
-
-> **Note:** The Barron's recipe doesn't require login credentials—it uses archive.is to fetch articles.
 
 ### 3. Approve your sending email in Amazon
 

@@ -13,17 +13,19 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
       - name: Install Calibre
         run: |
           sudo apt-get update
           sudo apt-get install -y calibre
 
       - name: Fetch Barron's with Calibre
+        env:
+          BARRONS_USERNAME: ${{ secrets.BARRONS_USERNAME }}
+          BARRONS_PASSWORD: ${{ secrets.BARRONS_PASSWORD }}
         run: |
-          ebook-convert barrons_complete.recipe barrons.epub \
+          ebook-convert "Barron's Magazine.recipe" barrons.epub \
+            --username "$BARRONS_USERNAME" \
+            --password "$BARRONS_PASSWORD" \
             --output-profile kindle_oasis
 
       - name: Send to Kindle via Gmail
