@@ -1,0 +1,113 @@
+#!/usr/bin/env python
+# vim:fileencoding=utf-8
+"""
+Barron's Latest - Real-Time News
+Fetches the latest daily news from Barron's using subscription login
+"""
+
+from calibre.web.feeds.news import BasicNewsRecipe, prefixed_classes
+
+
+class BarronsLatest(BasicNewsRecipe):
+    title = "Barron's Latest"
+    __author__ = 'Custom'
+    description = "Latest real-time news from Barron's"
+    language = 'en_US'
+    masthead_url = 'https://www.barrons.com/asset/barrons/images/barrons-logo.png'
+    encoding = 'utf-8'
+    no_javascript = True
+    no_stylesheets = True
+    remove_attributes = ['style', 'height', 'width']
+    
+    needs_subscription = True
+    
+    # Limit articles
+    max_articles_per_feed = 25
+    oldest_article = 2  # days
+    
+    extra_css = '''
+        .headline { font-size: x-large; font-weight: bold; }
+        .byline { font-size: small; color: #666; }
+        img { max-width: 100%; height: auto; }
+    '''
+
+    keep_only_tags = [
+        prefixed_classes('article_header- article_content- articleBody- article__body-'),
+        dict(name='article'),
+        dict(attrs={'class': lambda x: x and 'article' in x.lower()}),
+    ]
+
+    remove_tags = [
+        prefixed_classes('newsletter- related- social- comments- sidebar- ad- share-'),
+        dict(name=['button', 'svg', 'aside', 'nav', 'script', 'style']),
+    ]
+
+    feeds = [
+        ('Latest News', 'https://www.barrons.com/real-time'),
+        ('Markets', 'https://www.barrons.com/topics/markets'),
+        ('Stocks', 'https://www.barrons.com/topics/stocks'),
+    ]
+
+    def get_browser(self, *args, **kwargs):
+        br = BasicNewsRecipe.get_browser(self, *args, **kwargs)
+        # Login if credentials provided
+        if self.username and self.password:
+            br.open('https://sso.accounts.dowjones.com/login')
+            br.select_form(nr=0)
+            br['username'] = self.username
+            br['password'] = self.password
+            br.submit()
+        return br
+
+    def parse_index(self):
+        feeds = []
+        
+        for section_name, url in self.feeds:
+            self.log(f'Fetching {section_name} from {url}')
+            articles = []
+            
+            try:
+                soup = self.index_to_soup(url)
+                
+                # Find all article links
+                seen_urls = set()
+                for a in soup.findAll('a', href=True):
+                    href = a['href']
+                    
+                    # Only get article links
+                    if '/articles/' not in href:
+                        continue
+                    if not href.startswith('https://www.barrons.com'):
+                        continue
+                    if href in seen_urls:
+                        continue
+                    
+                    # Get title
+                    title = self.tag_to_string(a).strip()
+                    if not title or len(title) < 10:
+                        continue
+                    
+                    seen_urls.add(href)
+                    articles.append({
+                        'title': title,
+                        'url': href,
+                        'description': '',
+                    })
+                    
+                    if len(articles) >= self.max_articles_per_feed:
+                        break
+                
+                if articles:
+                    feeds.append((section_name, articles))
+                    self.log(f'Found {len(articles)} articles in {section_name}')
+                    
+            except Exception as e:
+                self.log(f'Error fetching {section_name}: {e}')
+        
+        return feeds
+
+    def preprocess_html(self, soup):
+        # Clean up
+        for tag in soup.findAll(['script', 'style', 'noscript']):
+            tag.decompose()
+        return soup

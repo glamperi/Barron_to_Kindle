@@ -1,18 +1,30 @@
 # Barron's to Kindle
 
-A GitHub Action that fetches the latest Barron's Magazine using your subscription and sends it to your Kindle.
+GitHub Actions that fetch Barron's content and send it to your Kindle.
 
-## What It Fetches
+## Workflows
 
-Uses Calibre's built-in **Barron's Magazine** recipe to fetch the weekly print edition with your subscription credentials.
+### 1. Barron's Magazine (Weekly)
+- **File:** `.github/workflows/barrons-magazine.yml`
+- **Schedule:** Every Saturday at 7 AM EST
+- **Content:** Weekly print magazine edition
+- Uses Calibre's built-in recipe
+
+### 2. Barron's Latest (Daily)
+- **File:** `.github/workflows/barrons-latest.yml`  
+- **Schedule:** Weekdays at 7 AM and 5 PM EST
+- **Content:** Real-time news, Markets, Stocks
+- Uses custom `barrons-latest.recipe`
+
+Both can also be triggered manually from the Actions tab.
 
 ## Setup
 
-### 1. Fork or copy this repository
+### 1. Fork or clone this repository
 
 ### 2. Configure GitHub Secrets
 
-Go to your repository's **Settings → Secrets and variables → Actions** and add the following secrets:
+Go to your repository's **Settings → Secrets and variables → Actions** and add:
 
 | Secret | Description |
 |--------|-------------|
@@ -24,41 +36,47 @@ Go to your repository's **Settings → Secrets and variables → Actions** and a
 
 ### 3. Approve your sending email in Amazon
 
-1. Go to [Amazon's Manage Your Content and Devices](https://www.amazon.com/hz/mycd/myx)
+1. Go to [Amazon's Manage Your Content and Devices](https://www.amazon.com/hz/mycd/myx#/home/settings/payment)
 2. Go to **Preferences → Personal Document Settings**
-3. Under **Approved Personal Document E-mail List**, add your `FROM_EMAIL`
+3. Under **Approved Personal Document E-mail List**, add your Gmail address
 
-### 4. Run the workflow
+### 4. Run the workflows
 
 - Go to the **Actions** tab in your repository
-- Select **Barron's to Kindle**
+- Select either workflow
 - Click **Run workflow**
 
-## Optional: Automatic scheduling
+## Adding More Publications
 
-To receive Barron's automatically (e.g., every Saturday), uncomment the schedule section in the workflow file:
+To add another publication, create a new workflow file in `.github/workflows/` following the same pattern. You can use any of Calibre's built-in recipes or create custom `.recipe` files.
 
-```yaml
-schedule:
-  - cron: '0 8 * * 6'  # 8 AM UTC every Saturday
-```
+## Customizing the Schedule
+
+Edit the `cron` expressions in the workflow files. Format: `minute hour day month weekday`
+
+Examples:
+- `0 12 * * 6` — Saturdays at 12 PM UTC
+- `0 12 * * 1-5` — Weekdays at 12 PM UTC
+- `0 */6 * * *` — Every 6 hours
+
+Use [crontab.guru](https://crontab.guru/) to build cron expressions.
 
 ## Troubleshooting
-
-### "Recipe not found" error
-Calibre's built-in recipes are included by default. If you encounter issues, you may need to download the recipe file manually from [Calibre's recipe repository](https://github.com/kovidgoyal/calibre/tree/master/recipes).
 
 ### Authentication failures
 - Verify your Barron's credentials work on the website
 - Barron's uses the same login as WSJ if you have a bundled subscription
 
 ### Email not arriving on Kindle
-- Ensure the sending email is in your approved senders list on Amazon
-- Check your Kindle's email address is correct (find it in Amazon device settings)
+- Ensure your Gmail is in Amazon's approved senders list
+- Check your Kindle email address is correct
 - Files may take a few minutes to appear
+
+### Recipe errors
+- The magazine workflow uses Calibre's built-in recipe (maintained by the community)
+- The latest workflow uses a custom recipe in this repo
 
 ## Notes
 
-- This uses Calibre's built-in Barron's recipe which is maintained by the Calibre community
-- The workflow runs on GitHub's free tier (2,000 minutes/month for private repos, unlimited for public)
+- Runs on GitHub's free tier (2,000 minutes/month for private repos, unlimited for public)
 - Your credentials are stored securely as GitHub encrypted secrets

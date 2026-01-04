@@ -1,0 +1,70 @@
+name: Barron's Latest (Daily)
+
+on:
+  workflow_dispatch:
+  
+  # Twice daily: 7 AM and 5 PM EST (12 PM and 10 PM UTC)
+  schedule:
+    - cron: '0 12 * * 1-5'  # Weekdays 12 PM UTC (7 AM EST)
+    - cron: '0 22 * * 1-5'  # Weekdays 10 PM UTC (5 PM EST)
+
+jobs:
+  fetch-and-send:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Calibre
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y calibre
+
+      - name: Fetch Barron's Latest
+        env:
+          BARRONS_USERNAME: ${{ secrets.BARRONS_USERNAME }}
+          BARRONS_PASSWORD: ${{ secrets.BARRONS_PASSWORD }}
+        run: |
+          ebook-convert barrons-latest.recipe barrons-latest.epub \
+            --username "$BARRONS_USERNAME" \
+            --password "$BARRONS_PASSWORD" \
+            --output-profile kindle_oasis
+
+      - name: Send to Kindle via Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
+        run: |
+          python3 << 'EOF'
+          import smtplib
+          import os
+          from email.mime.multipart import MIMEMultipart
+          from email.mime.base import MIMEBase
+          from email import encoders
+          from datetime import datetime
+
+          gmail_user = os.environ['GMAIL_USERNAME']
+          gmail_pass = os.environ['GMAIL_APP_PASSWORD']
+          kindle_email = os.environ['KINDLE_EMAIL']
+
+          msg = MIMEMultipart()
+          msg['From'] = gmail_user
+          msg['To'] = kindle_email
+          msg['Subject'] = f"Barron's Latest - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+          with open('barrons-latest.epub', 'rb') as f:
+              part = MIMEBase('application', 'octet-stream')
+              part.set_payload(f.read())
+              encoders.encode_base64(part)
+              part.add_header('Content-Disposition', 'attachment', filename='barrons-latest.epub')
+              msg.attach(part)
+
+          with smtplib.SMTP('smtp.gmail.com', 587) as server:
+              server.starttls()
+              server.login(gmail_user, gmail_pass)
+              server.send_message(msg)
+
+          print("Sent Barron's Latest to Kindle!")
+          EOF
