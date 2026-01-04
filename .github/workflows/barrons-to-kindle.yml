@@ -23,7 +23,7 @@ jobs:
 
       - name: Fetch Barron's with Calibre
         run: |
-          ebook-convert barrons_complete.recipe barrons.mobi \
+          ebook-convert barrons_complete.recipe barrons.epub \
             --output-profile kindle_oasis
 
       - name: Send to Kindle via Gmail
@@ -49,11 +49,11 @@ jobs:
           msg['To'] = kindle_email
           msg['Subject'] = f"Barron's - {datetime.now().strftime('%Y-%m-%d')}"
 
-          with open('barrons.mobi', 'rb') as f:
+          with open('barrons.epub', 'rb') as f:
               part = MIMEBase('application', 'octet-stream')
               part.set_payload(f.read())
               encoders.encode_base64(part)
-              part.add_header('Content-Disposition', 'attachment', filename='barrons.mobi')
+              part.add_header('Content-Disposition', 'attachment', filename='barrons.epub')
               msg.attach(part)
 
           with smtplib.SMTP('smtp.gmail.com', 587) as server:
