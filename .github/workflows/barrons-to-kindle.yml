@@ -1,0 +1,65 @@
+name: Barron's to Kindle
+
+on:
+  # Run manually from GitHub Actions tab
+  workflow_dispatch:
+  
+  # Optional: run on a schedule (e.g., every Saturday morning)
+  # schedule:
+  #   - cron: '0 8 * * 6'  # 8 AM UTC every Saturday
+
+jobs:
+  fetch-and-send:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Calibre
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y calibre
+
+      - name: Fetch Barron's with Calibre
+        run: |
+          ebook-convert barrons_complete.recipe barrons.mobi \
+            --output-profile kindle_oasis
+
+      - name: Send to Kindle via Gmail
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          KINDLE_EMAIL: ${{ secrets.KINDLE_EMAIL }}
+        run: |
+          python3 << 'EOF'
+          import smtplib
+          import os
+          from email.mime.multipart import MIMEMultipart
+          from email.mime.base import MIMEBase
+          from email import encoders
+          from datetime import datetime
+
+          gmail_user = os.environ['GMAIL_USERNAME']
+          gmail_pass = os.environ['GMAIL_APP_PASSWORD']
+          kindle_email = os.environ['KINDLE_EMAIL']
+
+          msg = MIMEMultipart()
+          msg['From'] = gmail_user
+          msg['To'] = kindle_email
+          msg['Subject'] = f"Barron's - {datetime.now().strftime('%Y-%m-%d')}"
+
+          with open('barrons.mobi', 'rb') as f:
+              part = MIMEBase('application', 'octet-stream')
+              part.set_payload(f.read())
+              encoders.encode_base64(part)
+              part.add_header('Content-Disposition', 'attachment', filename='barrons.mobi')
+              msg.attach(part)
+
+          with smtplib.SMTP('smtp.gmail.com', 587) as server:
+              server.starttls()
+              server.login(gmail_user, gmail_pass)
+              server.send_message(msg)
+
+          print("Sent to Kindle!")
+          EOF

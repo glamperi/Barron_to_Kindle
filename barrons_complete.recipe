@@ -1,0 +1,220 @@
+#!/usr/bin/env python
+# vim:fileencoding=utf-8
+"""
+Barron's Complete - Magazine + Real-Time News
+Custom recipe that fetches both the weekly magazine and real-time articles
+"""
+
+from datetime import date
+from calibre.web.feeds.news import BasicNewsRecipe, prefixed_classes
+
+
+class BarronsComplete(BasicNewsRecipe):
+    title = "Barron's Complete"
+    __author__ = 'Custom'
+    description = (
+        "Barron's weekly magazine plus real-time news. "
+        "Barron's covers U.S. financial information, market developments, "
+        "and relevant statistics."
+    )
+    language = 'en_US'
+    masthead_url = 'https://www.barrons.com/asset/barrons/images/barrons-logo.png'
+    encoding = 'utf-8'
+    no_javascript = True
+    no_stylesheets = True
+    remove_attributes = ['style', 'height', 'width']
+    resolve_internal_links = True
+    compress_news_images = True
+    scale_news_images_to_device = True
+
+    # Include real-time sections
+    extra_css = '''
+        .headline { font-size: x-large; font-weight: bold; }
+        .sub-headline { font-size: large; font-style: italic; }
+        .byline { font-size: small; color: #666; }
+        img { max-width: 100%; height: auto; }
+    '''
+
+    keep_only_tags = [
+        prefixed_classes('article_header- article_content- articleBody-'),
+        dict(name='article'),
+    ]
+
+    remove_tags = [
+        prefixed_classes('newsletter- related- social- comments- sidebar- ad-'),
+        dict(name=['button', 'svg', 'aside', 'nav']),
+        dict(attrs={'class': lambda x: x and 'newsletter' in x.lower()}),
+        dict(attrs={'id': lambda x: x and 'newsletter' in x.lower()}),
+    ]
+
+    # Recipe-specific options for date selection
+    recipe_specific_options = {
+        'date': {
+            'short': 'The date of the magazine edition (YYYY-MM-DD format)',
+            'long': 'For example, 2024-01-06. Leave empty for current issue.',
+        },
+        'include_realtime': {
+            'short': 'Include real-time news (yes/no)',
+            'long': 'Set to "no" to only fetch the magazine. Default is yes.',
+            'default': 'yes',
+        }
+    }
+
+    def get_browser(self, *args, **kwargs):
+        # Use Googlebot user agent to bypass paywall
+        kwargs['user_agent'] = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+        br = BasicNewsRecipe.get_browser(self, *args, **kwargs)
+        return br
+
+    def get_obfuscated_article(self, url, print_url=None, timeout=60):
+        # Use archive.is as fallback for paywalled content
+        from calibre.scraper.simple import read_url
+        try:
+            raw = read_url([], 'https://archive.is/latest/' + url)
+            return {'data': raw, 'url': url}
+        except Exception:
+            return BasicNewsRecipe.get_obfuscated_article(self, url, print_url, timeout)
+
+    articles_are_obfuscated = True
+
+    def parse_index(self):
+        self.log(
+            '\n***\nBarron\'s Complete Recipe\n'
+            'Fetching magazine + real-time news\n***\n'
+        )
+        
+        feeds = []
+        
+        # 1. Fetch Magazine articles
+        magazine_articles = self.parse_magazine()
+        if magazine_articles:
+            feeds.extend(magazine_articles)
+        
+        # 2. Fetch Real-Time articles (unless disabled)
+        include_rt = self.recipe_specific_options.get('include_realtime', 'yes')
+        if include_rt and str(include_rt).lower() != 'no':
+            realtime_articles = self.parse_realtime()
+            if realtime_articles:
+                feeds.extend(realtime_articles)
+        
+        return feeds
+
+    def parse_magazine(self):
+        """Parse the weekly magazine edition"""
+        feeds = []
+        
+        issue_url = 'https://www.barrons.com/magazine?archives=' + date.today().strftime('%Y')
+        d = self.recipe_specific_options.get('date')
+        if d and isinstance(d, str):
+            issue_url = 'https://www.barrons.com/magazine/' + d
+
+        try:
+            archive = self.index_to_soup(issue_url)
+            
+            # Try to get cover image
+            try:
+                cover_div = archive.find(**prefixed_classes('BarronsTheme--archive-box--'))
+                if cover_div and cover_div.img:
+                    self.cover_url = cover_div.img['src'].split('?')[0]
+            except Exception as e:
+                self.log('Could not fetch cover:', e)
+
+            # Get edition date
+            try:
+                date_elem = archive.find(**prefixed_classes('BarronsTheme--edition-date--'))
+                if date_elem:
+                    self.timefmt = ' [' + self.tag_to_string(date_elem) + ']'
+            except Exception:
+                pass
+
+            # Get headline/description
+            try:
+                headline = archive.find(**prefixed_classes('BarronsTheme--headline--'))
+                if headline:
+                    self.description = self.tag_to_string(headline)
+            except Exception:
+                pass
+
+            # Parse magazine sections
+            sections = {}
+            for a in archive.findAll('a', href=True):
+                href = a['href']
+                if '/articles/' in href and href.startswith('https://www.barrons.com'):
+                    title = self.tag_to_string(a).strip()
+                    if title and len(title) > 5:
+                        # Try to find section
+                        section = 'Magazine'
+                        parent = a.find_parent(**prefixed_classes('BarronsTheme--story-'))
+                        if parent:
+                            section_elem = parent.find(**prefixed_classes('BarronsTheme--section--'))
+                            if section_elem:
+                                section = self.tag_to_string(section_elem).strip() or 'Magazine'
+                        
+                        if section not in sections:
+                            sections[section] = []
+                        
+                        # Avoid duplicates
+                        if not any(art['url'] == href for art in sections[section]):
+                            sections[section].append({
+                                'title': title,
+                                'url': href,
+                                'description': '',
+                            })
+            
+            for section, articles in sections.items():
+                if articles:
+                    feeds.append((f'Magazine: {section}', articles))
+                    self.log(f'Found {len(articles)} articles in Magazine: {section}')
+
+        except Exception as e:
+            self.log('Error parsing magazine:', e)
+
+        return feeds
+
+    def parse_realtime(self):
+        """Parse real-time news section"""
+        feeds = []
+        
+        # Real-time sections to fetch
+        sections = [
+            ('Real-Time', 'https://www.barrons.com/real-time'),
+            ('Markets', 'https://www.barrons.com/topics/markets'),
+            ('Stocks', 'https://www.barrons.com/topics/stocks'),
+        ]
+        
+        for section_name, url in sections:
+            try:
+                soup = self.index_to_soup(url)
+                articles = []
+                
+                # Find article links
+                for a in soup.findAll('a', href=True):
+                    href = a['href']
+                    if '/articles/' in href and href.startswith('https://www.barrons.com'):
+                        title = self.tag_to_string(a).strip()
+                        if title and len(title) > 10:  # Skip short link text
+                            # Avoid duplicates
+                            if not any(art['url'] == href for art in articles):
+                                articles.append({
+                                    'title': title,
+                                    'url': href,
+                                    'description': '',
+                                })
+                
+                # Limit to 15 articles per section
+                articles = articles[:15]
+                
+                if articles:
+                    feeds.append((section_name, articles))
+                    self.log(f'Found {len(articles)} articles in {section_name}')
+                    
+            except Exception as e:
+                self.log(f'Error parsing {section_name}:', e)
+        
+        return feeds
+
+    def preprocess_html(self, soup):
+        # Clean up the article
+        for tag in soup.findAll(['script', 'style', 'noscript']):
+            tag.decompose()
+        return soup
