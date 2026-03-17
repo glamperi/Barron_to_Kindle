@@ -1,6 +1,6 @@
 # Barron's to Kindle
 
-GitHub Actions that fetch Barron's content and send it to your Kindle.
+GitHub Actions that fetch Barron's content and send it to your Kindle. Sends Weekly on Saturdays.
 
 ## Workflows
 
