@@ -2,7 +2,7 @@
 
 GitHub Actions that fetch Barron's content and send it to your Kindle. Sends Weekly on Saturdays.
 
-## Workflows
+## Workflows - Updates!
 
 ### 1. Barron's Magazine (Weekly)
 - **File:** `.github/workflows/barrons-magazine.yml`
