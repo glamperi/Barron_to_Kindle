@@ -86,6 +86,18 @@ def _body_to_html(body):
     return html
 
 
+def _rendered_paragraphs(html):
+    """Article text as rendered into the page HTML (<p data-type="paragraph">)."""
+    paras = re.findall(r'<p[^>]*data-type="paragraph"[^>]*>(.*?)</p>', html, re.DOTALL)
+    out = []
+    for p in paras:
+        # keep bold/italic, drop every other tag (links, spans, ad markers)
+        p = re.sub(r'<(?!/?(?:b|strong|i|em)\b)[^>]+>', '', p).strip()
+        if p:
+            out.append(f'<p>{p}</p>')
+    return out
+
+
 class BarronsLatestFull(BasicNewsRecipe):
     title = "Barron's Latest"
     __author__ = 'Gary (cookie auth)'
@@ -159,11 +171,24 @@ class BarronsLatestFull(BasicNewsRecipe):
                              if isinstance(x, dict)).strip()
 
             body = art.get('body')
-            if body:
+            rendered = [] if body else _rendered_paragraphs(html)
+            if body or len(rendered) >= 3:
                 self.full_count += 1
             else:
                 self.snippet_count += 1
                 self.log.warn('Snippet only (not logged in?):', url)
+                if self.snippet_count == 1:
+                    # Save one example page for troubleshooting
+                    dbg = os.path.expanduser('~/Documents/Barrons/debug-article.html')
+                    try:
+                        os.makedirs(os.path.dirname(dbg), exist_ok=True)
+                        with open(dbg, 'w', encoding='utf-8') as f:
+                            f.write(html)
+                        self.log('Saved example page to', dbg)
+                        self.log('pageProps keys:', sorted(pp.keys()))
+                        self.log('articleData keys:', sorted(art.keys()))
+                    except Exception as e:
+                        self.log.warn('Could not save debug page:', e)
                 body = pp.get('snippet', [])
 
             out = '<html><body>\n'
@@ -171,7 +196,7 @@ class BarronsLatestFull(BasicNewsRecipe):
                 out += f'<h1>{escape(headline)}</h1>\n'
             if byline:
                 out += f'<div class="auth">{escape(byline)}</div>\n'
-            out += _body_to_html(body)
+            out += '\n'.join(rendered) if rendered else _body_to_html(body)
             out += '</body></html>'
             return out
         except Exception:
@@ -189,10 +214,15 @@ class BarronsLatestFull(BasicNewsRecipe):
             self.log.warn('No cookie file at', COOKIE_FILE,
                           '- you will only get snippets.')
         br.addheaders += [
+            ('Accept-Encoding', 'gzip'),
             ('Accept-Language', 'en-US,en;q=0.9'),
             ('Sec-Ch-Ua', '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"'),
             ('Sec-Ch-Ua-Mobile', '?0'),
             ('Sec-Ch-Ua-Platform', '"macOS"'),
+            ('Sec-Fetch-Dest', 'document'),
+            ('Sec-Fetch-Mode', 'navigate'),
+            ('Sec-Fetch-Site', 'none'),
+            ('Sec-Fetch-User', '?1'),
         ]
         return br
 

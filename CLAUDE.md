@@ -13,6 +13,8 @@ Goal: deliver Barron's content (Gary's paid subscription) to a Kindle Colorsoft 
 - **GitHub Actions can't log in to Dow Jones.** The SSO login page returns `HTTP 412` to the runner, and article pages return a CAPTCHA ("One more step… complete the security check") with no solvable widget. Cloud IPs are blocked.
 - **The built-in Barron's recipe is now snippet-only by design.** It was rewritten around Aug 2026: no login, no Googlebot/archive.is trick. It fetches cover + TOC + headline/byline/first paragraph. That is why deliveries since mid-Sept contain only links/snippets.
 - The new recipe reads article JSON from `<script id="__NEXT_DATA__">`. `pageProps.articleData.body` is present only for logged-in subscribers; otherwise it falls back to `pageProps.snippet`.
+- **Oct 2026: `articleData.body` comes back empty even for subscribers** (`isSubscriber=True`, `isServerUnlockedArticle=True`). The full text is server-rendered in the page HTML as `<p data-type="paragraph">` tags. Both recipes fall back to `_rendered_paragraphs()` for this. If full-text counts drop to 0 again with valid cookies, check the debug dump at `~/Documents/Barrons/debug-article.html` for where the text moved.
+- Kindle confusion: deliveries with identical titles made the Kindle open an old snippet copy. The latest recipe and the send script stamp date/time into the title/filename.
 - Same-owner sites (WSJ, IBD/investors.com) block the same way (403/CAPTCHA).
 - Kindle needs **EPUB** (MOBI is rejected with E001). Use `--output-profile kindle_oasis`.
 - Email: Gmail SMTP `smtp.gmail.com:587` + STARTTLS + 16-char app password. Type the password by hand (a pasted non-breaking space caused a UnicodeEncodeError). GMX doesn't support app passwords.
