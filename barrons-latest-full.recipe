@@ -1,0 +1,201 @@
+#!/usr/bin/env python
+# vim:fileencoding=utf-8
+#
+# Barron's Latest (Full Text) — newest articles from Barron's section pages,
+# full text via your logged-in browser cookies.
+#
+# Uses the same cookie file as barrons-full.recipe:
+#   ~/barrons-cookies.txt   (or set BARRONS_COOKIES)
+#
+# RUN (locally on your Mac)
+#   ebook-convert barrons-latest-full.recipe barrons-latest.epub --output-profile kindle_oasis
+
+import json
+import os
+import re
+from html import escape
+from http.cookiejar import MozillaCookieJar
+
+from calibre.web.feeds.news import BasicNewsRecipe
+
+COOKIE_FILE = os.path.expanduser(
+    os.environ.get('BARRONS_COOKIES', '~/barrons-cookies.txt'))
+
+USER_AGENT = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) '
+              'Chrome/129.0.0.0 Safari/537.36')
+
+# Section pages to pull from: (section name, URL)
+SECTIONS = [
+    ('Latest News', 'https://www.barrons.com/real-time'),
+    ('Markets', 'https://www.barrons.com/topics/markets'),
+    ('Stocks', 'https://www.barrons.com/topics/stocks'),
+]
+
+MAX_PER_SECTION = 20
+
+ARTICLE_RE = re.compile(r'^https://www\.barrons\.com/articles/[A-Za-z0-9-]+$')
+
+
+def _content_to_html(content):
+    html = ''
+    for node in content or []:
+        if not isinstance(node, dict):
+            continue
+        text = escape(node.get('text', ''))
+        if not text:
+            continue
+        if node.get('type') == 'link' and node.get('uri'):
+            html += f'<a href="{node["uri"]}">{text}</a>'
+        else:
+            html += text
+    return html
+
+
+def _body_to_html(body):
+    html = ''
+    for item in body or []:
+        if not isinstance(item, dict):
+            continue
+        typ = item.get('type', '')
+        if typ == 'paragraph':
+            text = _content_to_html(item.get('content'))
+            if text:
+                html += f'<p>{text}</p>\n'
+        elif typ in ('heading', 'subheading'):
+            text = _content_to_html(item.get('content'))
+            if text:
+                html += f'<h3>{text}</h3>\n'
+        elif typ == 'image':
+            src = item.get('url') or item.get('imageUrl', '')
+            cap_raw = item.get('caption', '')
+            cap = (_content_to_html(cap_raw) if isinstance(cap_raw, list)
+                   else escape(str(cap_raw or '')))
+            if src:
+                html += f'<figure><img src="{src}"/>'
+                if cap:
+                    html += f'<figcaption>{cap}</figcaption>'
+                html += '</figure>\n'
+        elif typ == 'list':
+            tag = 'ol' if item.get('ordered') else 'ul'
+            html += f'<{tag}>\n'
+            for li in item.get('items') or item.get('content') or []:
+                if isinstance(li, dict):
+                    html += f'<li>{_content_to_html(li.get("content"))}</li>\n'
+            html += f'</{tag}>\n'
+    return html
+
+
+class BarronsLatestFull(BasicNewsRecipe):
+    title = "Barron's Latest"
+    __author__ = 'Gary (cookie auth)'
+    description = "Newest Barron's articles, full text via subscriber cookies."
+    language = 'en_US'
+    encoding = 'utf-8'
+    ignore_duplicate_articles = {'url'}
+    masthead_url = 'https://www.barrons.com/asset/barrons/images/barrons-logo.png'
+    timefmt = ' [%a %b %d, %I:%M %p]'  # unique title per run, so Kindle won't confuse copies
+    delay = 2
+    simultaneous_downloads = 1
+
+    extra_css = '''
+        .auth { font-size:small; }
+        figcaption { font-size:small; text-align:center; }
+        img { display:block; margin:0 auto; }
+    '''
+
+    full_count = 0
+    snippet_count = 0
+
+    def parse_index(self):
+        feeds = []
+        seen = set()
+        for section, url in SECTIONS:
+            try:
+                soup = self.index_to_soup(url)
+            except Exception as e:
+                self.log.warn('Could not load', url, '-', e)
+                continue
+            if 'complete the security check' in soup.get_text().lower():
+                self.log.warn('CAPTCHA page returned for', url)
+                continue
+            articles = []
+            for a in soup.findAll('a', href=True):
+                href = a['href'].split('?')[0].split('#')[0]
+                if href.startswith('/articles/'):
+                    href = 'https://www.barrons.com' + href
+                if not ARTICLE_RE.match(href) or href in seen:
+                    continue
+                title = self.tag_to_string(a).strip()
+                if len(title) < 15:  # skip "Read more", icons, etc.
+                    continue
+                seen.add(href)
+                articles.append({'title': title, 'url': href})
+                if len(articles) >= MAX_PER_SECTION:
+                    break
+            self.log(section, ':', len(articles), 'articles')
+            if articles:
+                feeds.append((section, articles))
+        if not feeds:
+            raise ValueError('No articles found (blocked, CAPTCHA, or page layout changed)')
+        return feeds
+
+    def preprocess_raw_html(self, raw, url):
+        html = raw if isinstance(raw, str) else raw.decode('utf-8', errors='ignore')
+        if 'complete the security check' in html.lower():
+            self.log.warn('CAPTCHA page returned for', url)
+        nd_match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>',
+                             html, re.DOTALL)
+        if not nd_match:
+            return html
+        try:
+            pp = json.loads(nd_match.group(1))['props']['pageProps']
+            art = pp.get('articleData', {})
+
+            headline = art.get('headline', {})
+            if isinstance(headline, dict):
+                headline = headline.get('text', '')
+            byline = ''.join(x.get('text', '') for x in art.get('byline', [])
+                             if isinstance(x, dict)).strip()
+
+            body = art.get('body')
+            if body:
+                self.full_count += 1
+            else:
+                self.snippet_count += 1
+                self.log.warn('Snippet only (not logged in?):', url)
+                body = pp.get('snippet', [])
+
+            out = '<html><body>\n'
+            if headline:
+                out += f'<h1>{escape(headline)}</h1>\n'
+            if byline:
+                out += f'<div class="auth">{escape(byline)}</div>\n'
+            out += _body_to_html(body)
+            out += '</body></html>'
+            return out
+        except Exception:
+            return html
+
+    def get_browser(self, *args, **kw):
+        kw['user_agent'] = USER_AGENT
+        br = BasicNewsRecipe.get_browser(self, *args, **kw)
+        if os.path.exists(COOKIE_FILE):
+            jar = MozillaCookieJar()
+            jar.load(COOKIE_FILE, ignore_discard=True, ignore_expires=True)
+            br.set_cookiejar(jar)
+            self.log('Loaded', len(jar), 'cookies from', COOKIE_FILE)
+        else:
+            self.log.warn('No cookie file at', COOKIE_FILE,
+                          '- you will only get snippets.')
+        br.addheaders += [
+            ('Accept-Language', 'en-US,en;q=0.9'),
+            ('Sec-Ch-Ua', '"Google Chrome";v="129", "Not=A?Brand";v="8", "Chromium";v="129"'),
+            ('Sec-Ch-Ua-Mobile', '?0'),
+            ('Sec-Ch-Ua-Platform', '"macOS"'),
+        ]
+        return br
+
+    def cleanup(self):
+        self.log('Articles with full text:', self.full_count,
+                 '| snippet only:', self.snippet_count)

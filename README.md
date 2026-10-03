@@ -1,82 +1,67 @@
 # Barron's to Kindle
 
-GitHub Actions that fetch Barron's content and send it to your Kindle. Sends Weekly on Saturdays.
+Sends Barron's articles (full text, from my subscription) to my Kindle Colorsoft as an EPUB, by email. **Everything runs on my Mac.**
 
-## Workflows - Updates!!
+## The two commands
 
-### 1. Barron's Magazine (Weekly)
-- **File:** `.github/workflows/barrons-magazine.yml`
-- **Schedule:** Every Saturday at 7 AM EST
-- **Content:** Weekly print magazine edition
-- Uses Calibre's built-in recipe
+Run from the `Barron_to_Kindle` folder:
 
-### 2. Barron's Latest (Daily)
-- **File:** `.github/workflows/barrons-latest.yml`  
-- **Schedule:** Weekdays at 7 AM and 5 PM EST
-- **Content:** Real-time news, Markets, Stocks
-- Uses custom `barrons-latest.recipe`
+```bash
+./send-to-kindle.sh latest      # today's newest articles
+./send-to-kindle.sh magazine    # this week's print magazine
+```
 
-Both can also be triggered manually from the Actions tab.
+| Command | What you get | When to use it |
+|---|---|---|
+| `latest` | Newest articles from Barron's Latest News, Markets and Stocks pages (up to 20 each) | Any time — before heading out, at the cabana, etc. |
+| `magazine` | The full weekly Barron's magazine issue: cover story, features, columns | Once a week, after the issue comes out (Saturday morning) |
 
-## Setup
+Each run takes a few minutes, then the book shows up on the Kindle. A copy is also saved in `~/Documents/Barrons`. Each copy has the date and time in its title, so the Kindle never confuses it with an older one.
 
-### 1. Fork or clone this repository
+If the script says **"No full-text articles"**, the Barron's cookies have expired; see below. It won't send snippets.
 
-### 2. Configure GitHub Secrets
+## Files
 
-Go to your repository's **Settings → Secrets and variables → Actions** and add:
+| File | Purpose |
+|---|---|
+| `send-to-kindle.sh` | Builds the book and emails it to the Kindle |
+| `barrons-latest-full.recipe` | Calibre recipe for the `latest` edition |
+| `barrons-full.recipe` | Calibre recipe for the `magazine` edition |
+| `CLAUDE.md` | Background notes for Claude Code |
+| `~/.barrons-kindle.env` | Gmail + Kindle settings (on the Mac only, **not** in Git) |
+| `~/barrons-cookies.txt` | Barron's login cookies (on the Mac only, **not** in Git) |
 
-| Secret | Description |
-|--------|-------------|
-| `BARRONS_USERNAME` | Your Barron's login email |
-| `BARRONS_PASSWORD` | Your Barron's password |
-| `GMAIL_USERNAME` | Your Gmail address |
-| `GMAIL_APP_PASSWORD` | Your Gmail app password ([create one here](https://myaccount.google.com/apppasswords)) |
-| `KINDLE_EMAIL` | Your Kindle email (e.g., `yourname@kindle.com`) |
+## Every few weeks: refresh the Barron's cookies
 
-### 3. Approve your sending email in Amazon
+1. In Chrome, log in to barrons.com.
+2. Click the puzzle-piece icon → **Get cookies.txt LOCALLY** → **Export** (Netscape format).
+3. In Terminal:
+   ```bash
+   mv ~/Downloads/www.barrons.com_cookies.txt ~/barrons-cookies.txt
+   ```
 
-1. Go to [Amazon's Manage Your Content and Devices](https://www.amazon.com/hz/mycd/myx#/home/settings/payment)
-2. Go to **Preferences → Personal Document Settings**
-3. Under **Approved Personal Document E-mail List**, add your Gmail address
+The cookies file can log in to my Barron's account. Treat it like a password.
 
-### 4. Run the workflows
+## One-time setup (new Mac)
 
-- Go to the **Actions** tab in your repository
-- Select either workflow
-- Click **Run workflow**
+1. Install Calibre: `brew install --cask calibre`
+2. Make the script runnable: `chmod +x send-to-kindle.sh`
+3. Create `~/.barrons-kindle.env`:
+   ```
+   GMAIL_USER="you@gmail.com"
+   GMAIL_APP_PASSWORD="abcdefghijklmnop"
+   KINDLE_EMAIL="yourname@kindle.com"
+   ```
+   - The app password comes from myaccount.google.com → search **app passwords** (needs 2-Step Verification on). Remove the spaces, and type it rather than pasting.
+   - Then lock it down: `chmod 600 ~/.barrons-kindle.env`
+4. On Amazon (Manage Your Content and Devices → Preferences → Personal Document Settings), the Gmail address must be on the **Approved Personal Document E-mail List**.
+5. Export the cookies (above).
 
-## Adding More Publications
+## Why there are no GitHub Actions anymore
 
-To add another publication, create a new workflow file in `.github/workflows/` following the same pattern. You can use any of Calibre's built-in recipes or create custom `.recipe` files.
+This project started as GitHub Actions that ran on a schedule in the cloud. Those workflows are **disabled** and can't be made to work:
 
-## Customizing the Schedule
+- Dow Jones (Barron's owner) blocks GitHub's cloud servers: logins get `HTTP 412`, article pages return a CAPTCHA that can't be solved.
+- Calibre's built-in Barron's recipe was rewritten in mid-2026 to fetch only headlines and first paragraphs, so the Actions were delivering snippet-only issues.
 
-Edit the `cron` expressions in the workflow files. Format: `minute hour day month weekday`
-
-Examples:
-- `0 12 * * 6` — Saturdays at 12 PM UTC
-- `0 12 * * 1-5` — Weekdays at 12 PM UTC
-- `0 */6 * * *` — Every 6 hours
-
-Use [crontab.guru](https://crontab.guru/) to build cron expressions.
-
-## Troubleshooting
-
-### Authentication failures
-- Verify your Barron's credentials work on the website
-- Barron's uses the same login as WSJ if you have a bundled subscription
-
-### Email not arriving on Kindle
-- Ensure your Gmail is in Amazon's approved senders list
-- Check your Kindle email address is correct
-- Files may take a few minutes to appear
-
-### Recipe errors
-- The magazine workflow uses Calibre's built-in recipe (maintained by the community)
-- The latest workflow uses a custom recipe in this repo
-
-## Notes
-
-- Runs on GitHub's free tier (2,000 minutes/month for private repos, unlimited for public)
-- Your credentials are stored securely as GitHub encrypted secrets
+Full text only works with a logged-in session from my own browser, which is why it runs on the Mac with exported cookies. The old workflow files are still in `.github/workflows/` for reference.
