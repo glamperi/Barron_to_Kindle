@@ -1,0 +1,133 @@
+#!/usr/bin/env python
+# vim:fileencoding=utf-8
+#
+# Markets Briefing — free, full-text financial news from CNBC, The Guardian and NPR.
+# No login or cookies needed.
+#
+# RUN (locally on your Mac)
+#   ebook-convert markets-briefing.recipe briefing.epub --output-profile kindle_oasis
+
+from calibre.web.feeds.news import BasicNewsRecipe, classes
+
+USER_AGENT = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+              'AppleWebKit/537.36 (KHTML, like Gecko) '
+              'Chrome/129.0.0.0 Safari/537.36')
+
+CNBC = 'https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id='
+
+# RSS feeds: (section, feed url)
+FEEDS = [
+    ('CNBC Top News', CNBC + '100003114'),
+    ('CNBC Markets & Investing', CNBC + '15839069'),
+    ('CNBC Economy', CNBC + '20910258'),
+    ('CNBC Finance', CNBC + '10000664'),
+    ('CNBC Earnings', CNBC + '15839135'),
+    ('CNBC Technology', CNBC + '19854910'),
+    ('Guardian US Business', 'https://www.theguardian.com/us/business/rss'),
+    ('NPR Business', 'https://feeds.npr.org/1006/rss.xml'),
+]
+
+# Links we can't read in full: CNBC Pro (paywalled), videos, live blogs
+SKIP_IN_URL = ('/pro/', '/video/', '/live/', '/live-updates/')
+
+MAX_PER_SECTION = 15
+
+
+class MarketsBriefing(BasicNewsRecipe):
+    title = 'Markets Briefing'
+    __author__ = 'Gary'
+    description = 'Free full-text market and business news from CNBC, The Guardian and NPR.'
+    language = 'en'
+    encoding = 'utf-8'
+    oldest_article = 1.5  # days
+    max_articles_per_feed = MAX_PER_SECTION
+    timefmt = ' [%a %b %d, %I:%M %p]'  # unique title per run
+    no_stylesheets = True
+    remove_javascript = True
+    remove_attributes = ['style', 'height', 'width']
+    ignore_duplicate_articles = {'title', 'url'}
+    remove_empty_feeds = True
+    simultaneous_downloads = 2
+    delay = 1
+
+    # Article body selectors for both sites
+    keep_only_tags = [
+        # CNBC
+        classes('ArticleHeader-headline ArticleHeader-time RenderKeyPoints-list '
+                'ArticleBody-articleBody'),
+        # The Guardian
+        dict(attrs={'data-gu-name': ['headline', 'standfirst', 'meta', 'body']}),
+        # NPR
+        classes('storytitle'), dict(id='storytext'),
+    ]
+    remove_tags = [
+        classes('InlineVideo-container InlineImage-imageEmbedCredit RelatedContent '
+                'ArticleBody-extraData displayNone Advertisement HTMLModuleEnhancement '
+                'AudioEnhancement ad-wrap bucketwrap internallink'),
+        dict(name=['source', 'button', 'svg', 'template', 'video', 'iframe',
+                   'astro-island', 'document']),
+        dict(attrs={'data-parsely-title': 'Related Stories'}),
+    ]
+
+    extra_css = '''
+        .ArticleHeader-time { font-size:small; color:#404040; }
+        img { display:block; margin:0 auto; }
+        h2, h3 { font-size:1.1em; }
+    '''
+
+    full_count = 0
+    snippet_count = 0
+
+    def get_browser(self, *args, **kw):
+        kw['user_agent'] = USER_AGENT
+        return BasicNewsRecipe.get_browser(self, *args, **kw)
+
+    def parse_index(self):
+        feeds = []
+        for section, url in FEEDS:
+            try:
+                parsed = self.parse_feeds_from_url(section, url)
+            except Exception as e:
+                self.log.warn('Feed failed:', section, '-', e)
+                continue
+            self.log(section, ':', len(parsed), 'articles')
+            if parsed:
+                feeds.append((section, parsed))
+        if not feeds:
+            raise ValueError('No articles found from any feed')
+        return feeds
+
+    def parse_feeds_from_url(self, section, url):
+        """Parse one RSS feed into recipe article dicts, skipping paywalled/video items."""
+        from calibre.web.feeds import feed_from_xml
+        raw = self.index_to_soup(url, raw=True)
+        feed = feed_from_xml(raw, title=section, oldest_article=self.oldest_article,
+                             max_articles_per_feed=self.max_articles_per_feed,
+                             get_article_url=self.get_article_url, log=self.log)
+        out = []
+        for art in feed:
+            link = art.url or ''
+            if not link or any(x in link for x in SKIP_IN_URL):
+                continue
+            out.append({'title': art.title, 'url': link,
+                        'description': art.summary or '', 'date': art.localtime.strftime('%a, %d %b %Y %H:%M')})
+        return out
+
+    def preprocess_html(self, soup):
+        # lazy-loaded images
+        for img in soup.findAll('img', attrs={'srcset': True}):
+            if not img.get('src'):
+                img['src'] = img['srcset'].split()[0]
+        return soup
+
+    def postprocess_html(self, soup, first_fetch):
+        paras = [p for p in soup.findAll('p') if len(self.tag_to_string(p)) > 40]
+        if len(paras) >= 3:
+            self.full_count += 1
+        else:
+            self.snippet_count += 1
+        return soup
+
+    def cleanup(self):
+        self.log('Articles with full text:', self.full_count,
+                 '| snippet only:', self.snippet_count)

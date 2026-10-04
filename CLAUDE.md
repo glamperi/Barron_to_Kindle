@@ -15,6 +15,7 @@ Goal: deliver Barron's content (Gary's paid subscription) to a Kindle Colorsoft 
 - The new recipe reads article JSON from `<script id="__NEXT_DATA__">`. `pageProps.articleData.body` is present only for logged-in subscribers; otherwise it falls back to `pageProps.snippet`.
 - **Oct 2026: `articleData.body` comes back empty even for subscribers** (`isSubscriber=True`, `isServerUnlockedArticle=True`). The full text is server-rendered in the page HTML as `<p data-type="paragraph">` tags. Both recipes fall back to `_rendered_paragraphs()` for this. If full-text counts drop to 0 again with valid cookies, check the debug dump at `~/Documents/Barrons/debug-article.html` for where the text moved.
 - Kindle confusion: deliveries with identical titles made the Kindle open an old snippet copy. The latest recipe and the send script stamp date/time into the title/filename.
+- Free briefing (`markets-briefing.recipe`): CNBC RSS + Guardian US Business + NPR Business. AP (apnews.com) returns 403 to Calibre; Reuters needs camoufox (built-in recipe only, `reuters` mode). WSJ not included in Gary's Barron's plan.
 - Same-owner sites (WSJ, IBD/investors.com) block the same way (403/CAPTCHA).
 - Kindle needs **EPUB** (MOBI is rejected with E001). Use `--output-profile kindle_oasis`.
 - Email: Gmail SMTP `smtp.gmail.com:587` + STARTTLS + 16-char app password. Type the password by hand (a pasted non-breaking space caused a UnicodeEncodeError). GMX doesn't support app passwords.
@@ -28,8 +29,8 @@ Goal: deliver Barron's content (Gary's paid subscription) to a Kindle Colorsoft 
 
 Cookies expire every few weeks. **Never commit the cookies file.**
 
-## Open next steps
+## Status
 
-- Verify the cookie recipe returns full text.
-- If it works: add a local send script (reuse the Gmail code from the workflows) and schedule it on the Mac (launchd/cron).
-- Decide whether to disable the Actions schedules, since they can only produce snippets now.
+- Working (Oct 2026): `./send-to-kindle.sh latest|magazine|briefing|reuters` builds on the Mac and emails via `calibre-smtp` (settings in `~/.barrons-kindle.env`). See README.md.
+- GitHub Actions workflows are disabled; kept for reference only.
+- Possible next step: schedule `magazine` weekly on the Mac with launchd.

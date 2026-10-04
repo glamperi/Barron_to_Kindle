@@ -2,19 +2,25 @@
 
 Sends Barron's articles (full text, from my subscription) to my Kindle Colorsoft as an EPUB, by email. **Everything runs on my Mac.**
 
-## The two commands
+## The commands
 
 Run from the `Barron_to_Kindle` folder:
 
 ```bash
-./send-to-kindle.sh latest      # today's newest articles
-./send-to-kindle.sh magazine    # this week's print magazine
+./send-to-kindle.sh latest      # Barron's newest articles
+./send-to-kindle.sh magazine    # Barron's weekly print magazine
+./send-to-kindle.sh briefing    # free CNBC + Guardian + NPR business news
+./send-to-kindle.sh reuters     # all of Reuters (optional, slow)
 ```
 
 | Command | What you get | When to use it |
 |---|---|---|
 | `latest` | Newest articles from Barron's Latest News, Markets and Stocks pages (up to 20 each) | Any time — before heading out, at the cabana, etc. |
 | `magazine` | The full weekly Barron's magazine issue: cover story, features, columns | Once a week, after the issue comes out (Saturday morning) |
+| `briefing` | Free full-text news from CNBC (Top News, Markets, Economy, Finance, Earnings, Tech), The Guardian US Business and NPR Business, last ~36 hours | Daily, alongside `latest`. No login needed |
+| `reuters` | Calibre's built-in Reuters edition: every section, last ~day | Occasionally. First run downloads a helper browser, and it can take a long time |
+
+There's no WSJ edition: my Barron's login doesn't include WSJ, so it would only get the first paragraph of each story.
 
 Each run takes a few minutes, then the book shows up on the Kindle. A copy is also saved in `~/Documents/Barrons`. Each copy has the date and time in its title, so the Kindle never confuses it with an older one.
 
@@ -27,6 +33,7 @@ If the script says **"No full-text articles"**, the Barron's cookies have expire
 | `send-to-kindle.sh` | Builds the book and emails it to the Kindle |
 | `barrons-latest-full.recipe` | Calibre recipe for the `latest` edition |
 | `barrons-full.recipe` | Calibre recipe for the `magazine` edition |
+| `markets-briefing.recipe` | Calibre recipe for the `briefing` edition (no login) |
 | `CLAUDE.md` | Background notes for Claude Code |
 | `~/.barrons-kindle.env` | Gmail + Kindle settings (on the Mac only, **not** in Git) |
 | `~/barrons-cookies.txt` | Barron's login cookies (on the Mac only, **not** in Git) |

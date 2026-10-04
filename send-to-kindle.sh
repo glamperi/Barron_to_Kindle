@@ -19,15 +19,21 @@ CALIBRE_BIN="/Applications/calibre.app/Contents/MacOS"
 ENV_FILE="$HOME/.barrons-kindle.env"
 OUT_DIR="$HOME/Documents/Barrons"
 
+NEEDS_COOKIES=yes
+CHECK_FULLTEXT=yes
 case "$MODE" in
-  latest)   RECIPE="barrons-latest-full.recipe"; NAME="Barrons-Latest" ;;
-  magazine) RECIPE="barrons-full.recipe";        NAME="Barrons-Magazine" ;;
-  *) echo "Usage: $0 latest|magazine"; exit 1 ;;
+  latest)   RECIPE="$REPO_DIR/barrons-latest-full.recipe"; NAME="Barrons-Latest" ;;
+  magazine) RECIPE="$REPO_DIR/barrons-full.recipe";        NAME="Barrons-Magazine" ;;
+  briefing) RECIPE="$REPO_DIR/markets-briefing.recipe";    NAME="Markets-Briefing"; NEEDS_COOKIES=no ;;
+  reuters)  RECIPE="Reuters.recipe";                       NAME="Reuters"; NEEDS_COOKIES=no; CHECK_FULLTEXT=no ;;
+  *) echo "Usage: $0 latest|magazine|briefing|reuters"; exit 1 ;;
 esac
 
 [ -f "$ENV_FILE" ] || { echo "Missing $ENV_FILE (see top of this script)"; exit 1; }
 source "$ENV_FILE"
-[ -f "$HOME/barrons-cookies.txt" ] || { echo "Missing ~/barrons-cookies.txt - export cookies from Chrome first"; exit 1; }
+if [ "$NEEDS_COOKIES" = yes ] && [ ! -f "$HOME/barrons-cookies.txt" ]; then
+  echo "Missing ~/barrons-cookies.txt - export cookies from Chrome first"; exit 1
+fi
 
 mkdir -p "$OUT_DIR"
 STAMP="$(date +%Y-%m-%d_%H%M)"
@@ -35,17 +41,23 @@ EPUB="$OUT_DIR/${NAME}_${STAMP}.epub"
 LOG="$OUT_DIR/${NAME}_${STAMP}.log"
 
 echo "Building $MODE edition (takes a few minutes)..."
-"$CALIBRE_BIN/ebook-convert" "$REPO_DIR/$RECIPE" "$EPUB" \
+"$CALIBRE_BIN/ebook-convert" "$RECIPE" "$EPUB" \
   --output-profile kindle_oasis > "$LOG" 2>&1 || {
     echo "Build failed. Last lines of log:"; tail -20 "$LOG"; exit 1; }
 
-RESULT="$(grep 'Articles with full text' "$LOG" | tail -1 || true)"
-echo "$RESULT"
-FULL="$(echo "$RESULT" | sed -n 's/.*full text: \([0-9]*\).*/\1/p')"
-if [ -z "$FULL" ] || [ "$FULL" -eq 0 ]; then
-  echo "No full-text articles - cookies have probably expired."
-  echo "Re-export them from Chrome to ~/barrons-cookies.txt and try again. Not sending."
-  exit 1
+if [ "$CHECK_FULLTEXT" = yes ]; then
+  RESULT="$(grep 'Articles with full text' "$LOG" | tail -1 || true)"
+  echo "$RESULT"
+  FULL="$(echo "$RESULT" | sed -n 's/.*full text: \([0-9]*\).*/\1/p')"
+  if [ -z "$FULL" ] || [ "$FULL" -eq 0 ]; then
+    if [ "$NEEDS_COOKIES" = yes ]; then
+      echo "No full-text articles - cookies have probably expired."
+      echo "Re-export them from Chrome to ~/barrons-cookies.txt and try again. Not sending."
+    else
+      echo "No full-text articles - the site layout may have changed. Log: $LOG. Not sending."
+    fi
+    exit 1
+  fi
 fi
 
 echo "Emailing to $KINDLE_EMAIL..."
